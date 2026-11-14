@@ -54,6 +54,7 @@
    </attribute>
    <addaction name="actionAddMicrosoft"/>
    <addaction name="actionAddOffline"/>
+   <addaction name="actionImportHmcl"/>
    <addaction name="actionRefresh"/>
    <addaction name="actionRemove"/>
    <addaction name="actionSetDefault"/>
@@ -62,6 +63,7 @@
    <addaction name="actionMoveDown"/>
    <addaction name="separator"/>
    <addaction name="actionManageSkins"/>
+   <addaction name="actionEditOffline"/>
   </widget>
   <action name="actionSetDefault">
    <property name="text">
@@ -92,6 +94,22 @@
   <action name="actionAddOffline">
    <property name="text">
     <string>Add &amp;Offline</string>
+   </property>
+  </action>
+  <action name="actionImportHmcl">
+   <property name="text">
+    <string>&amp;Import from HMCL</string>
+   </property>
+   <property name="toolTip">
+    <string>Import offline accounts, including their UUIDs, from an HMCL accounts.json</string>
+   </property>
+  </action>
+  <action name="actionEditOffline">
+   <property name="text">
+    <string>Edit &amp;Profile</string>
+   </property>
+   <property name="toolTip">
+    <string>Change the username and UUID of this offline account</string>
    </property>
   </action>
   <action name="actionRefresh">

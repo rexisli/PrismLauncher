@@ -85,11 +85,17 @@ class MinecraftAccount : public QObject, public Usable {
 
     static MinecraftAccountPtr createBlankMSA();
 
-    static MinecraftAccountPtr createOffline(const QString& username);
+    //! Creates an offline account. If `uuid` is empty the UUID is derived from the username,
+    //! otherwise it is used as-is (32 hex digits, dashes allowed) so accounts shared with other
+    //! launchers such as HMCL keep the same identity.
+    static MinecraftAccountPtr createOffline(const QString& username, const QString& uuid = QString());
 
     static MinecraftAccountPtr loadFromJsonV3(const QJsonObject& json);
 
     static QUuid uuidFromUsername(QString username);
+
+    //! Normalizes a user supplied UUID to 32 lowercase hex digits. Returns an empty string when invalid.
+    static QString normalizeUuid(const QString& uuid);
 
     //! Saves a MinecraftAccount to a JSON object and returns it.
     QJsonObject saveToJson() const;
@@ -100,6 +106,9 @@ class MinecraftAccount : public QObject, public Usable {
     shared_qobject_ptr<AuthFlow> refresh();
 
     shared_qobject_ptr<AuthFlow> currentTask();
+
+    //! Changes the username and UUID of an offline account and persists the change.
+    void setOfflineProfile(const QString& username, const QString& uuid);
 
    public: /* queries */
     QString internalId() const { return data.internalId; }
@@ -116,7 +125,8 @@ class MinecraftAccount : public QObject, public Usable {
 
     AccountType accountType() const noexcept { return data.type; }
 
-    bool ownsMinecraft() const { return data.type != AccountType::Offline && data.minecraftEntitlement.ownsMinecraft; }
+    //! Offline accounts are always allowed to play, they simply cannot use online services.
+    bool ownsMinecraft() const { return data.type == AccountType::Offline || data.minecraftEntitlement.ownsMinecraft; }
 
     bool hasProfile() const { return data.profileId().size() != 0; }
 

@@ -263,6 +263,8 @@ QString LaunchController::askOfflineName(const QString& playerName, bool* ok)
     ChooseOfflineNameDialog dialog(message, m_parentWidget);
     dialog.setWindowTitle(title);
     dialog.setUsername(usedname);
+    // This dialog only picks a launch-time name, it does not create an account, so no UUID is needed.
+    dialog.setUuidVisible(false);
     if (dialog.exec() != QDialog::Accepted) {
         return {};
     }

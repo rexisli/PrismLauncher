@@ -71,6 +71,8 @@ class AccountListPage : public QMainWindow, public BasePage {
    public slots:
     void on_actionAddMicrosoft_triggered();
     void on_actionAddOffline_triggered();
+    void on_actionImportHmcl_triggered();
+    void on_actionEditOffline_triggered();
     void on_actionRemove_triggered();
     void on_actionRefresh_triggered();
     void on_actionSetDefault_triggered();

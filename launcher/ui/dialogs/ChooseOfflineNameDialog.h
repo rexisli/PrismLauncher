@@ -37,11 +37,16 @@ class ChooseOfflineNameDialog final : public QDialog {
     QString getUsername() const;
     void setUsername(const QString& username) const;
 
+    QString getUuid() const;
+    void setUuid(const QString& uuid) const;
+    void setUuidVisible(bool visible) const;
+
    private:
     void updateAcceptAllowed(const QString& username) const;
 
    protected slots:
     void on_usernameTextBox_textEdited(const QString& newText) const;
+    void on_uuidTextBox_textEdited(const QString& newText) const;
     void on_allowInvalidUsernames_checkStateChanged(Qt::CheckState checkState) const;
 
    private:

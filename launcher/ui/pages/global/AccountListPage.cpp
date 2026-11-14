@@ -38,7 +38,14 @@
 #include "ui/dialogs/skins/SkinManageDialog.h"
 #include "ui_AccountListPage.h"
 
+#include <QDir>
+#include <QFile>
+#include <QFileDialog>
 #include <QItemSelectionModel>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonParseError>
 #include <QMenu>
 #include <QPushButton>
 
@@ -55,7 +62,8 @@ AccountListPage::AccountListPage(QWidget* parent) : QMainWindow(parent), ui(new 
     ui->setupUi(this);
     ui->listView->setEmptyString(
         tr("Welcome!\n"
-           "If you're new here, you can select the \"Add Microsoft\" button to link your Microsoft account."));
+           "If you're new here, you can select \"Add Microsoft\" to link your Microsoft account, "
+           "or \"Add Offline\" to play without one."));
     ui->listView->setEmptyMode(VersionListView::String);
     ui->listView->setContextMenuPolicy(Qt::CustomContextMenu);
 
@@ -140,26 +148,179 @@ void AccountListPage::on_actionAddMicrosoft_triggered()
 
 void AccountListPage::on_actionAddOffline_triggered()
 {
-    if (!m_accounts->anyAccountIsValid()) {
-        QMessageBox::warning(this, tr("Error"),
-                             tr("You must add a Microsoft account that owns Minecraft before you can add an offline account."
-                                "<br><br>"
-                                "If you have lost your account you can contact Microsoft for support."));
-        return;
-    }
-
     ChooseOfflineNameDialog dialog(tr("Please enter your desired username to add your offline account."), this);
     if (dialog.exec() != QDialog::Accepted) {
         return;
     }
 
-    if (const MinecraftAccountPtr account = MinecraftAccount::createOffline(dialog.getUsername())) {
+    if (const MinecraftAccountPtr account = MinecraftAccount::createOffline(dialog.getUsername(), dialog.getUuid())) {
         account->login()->start();  // The task will complete here.
         m_accounts->addAccount(account);
         if (m_accounts->count() == 1) {
             m_accounts->setDefaultAccount(account);
         }
     }
+}
+
+void AccountListPage::on_actionEditOffline_triggered()
+{
+    QModelIndexList selection = ui->listView->selectionModel()->selectedIndexes();
+    if (selection.empty()) {
+        return;
+    }
+
+    MinecraftAccountPtr account = selection.first().data(AccountList::PointerRole).value<MinecraftAccountPtr>();
+    if (!account || account->accountType() != AccountType::Offline) {
+        return;
+    }
+
+    const QString oldUuid = account->profileId();
+
+    ChooseOfflineNameDialog dialog(tr("Edit the username and UUID of this offline account."), this);
+    dialog.setWindowTitle(tr("Edit Offline Account"));
+    dialog.setUsername(account->profileName());
+    dialog.setUuid(oldUuid);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    const QString newUuid = MinecraftAccount::normalizeUuid(dialog.getUuid());
+    if (newUuid != oldUuid) {
+        auto response = CustomMessageBox::selectable(this, tr("Change the UUID?"),
+                                                    tr("Singleplayer worlds, servers and statistics identify a player by its UUID. "
+                                                       "Changing it makes existing worlds treat this account as a different player."),
+                                                    QMessageBox::Question, QMessageBox::Yes | QMessageBox::No, QMessageBox::No)
+                            ->exec();
+        if (response != QMessageBox::Yes) {
+            return;
+        }
+    }
+
+    account->setOfflineProfile(dialog.getUsername(), dialog.getUuid());
+}
+
+void AccountListPage::on_actionImportHmcl_triggered()
+{
+    QString baseDir = qEnvironmentVariable("APPDATA");
+    if (baseDir.isEmpty()) {
+        baseDir = QDir::homePath();
+    }
+
+    const QString path =
+        QFileDialog::getOpenFileName(this, tr("Select an HMCL accounts.json"), QDir(baseDir).filePath(".hmcl/accounts.json"),
+                                     tr("HMCL accounts file (accounts.json);;JSON files (*.json);;All files (*)"));
+    if (path.isEmpty()) {
+        return;
+    }
+
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        QMessageBox::warning(this, tr("Import failed"), tr("Could not open %1.").arg(path));
+        return;
+    }
+
+    QJsonParseError parseError{};
+    const auto document = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError) {
+        QMessageBox::warning(this, tr("Import failed"), tr("Could not parse %1: %2").arg(path, parseError.errorString()));
+        return;
+    }
+
+    QJsonArray entries;
+    if (document.isArray()) {
+        entries = document.array();
+    } else if (document.isObject()) {
+        const auto object = document.object();
+        if (object.value("accounts").isArray()) {
+            entries = object.value("accounts").toArray();
+        } else if (object.value("username").isString() || object.value("profileName").isString()) {
+            entries.append(object);
+        }
+    }
+    if (entries.isEmpty()) {
+        QMessageBox::warning(this, tr("Import failed"), tr("No accounts were found in %1.").arg(path));
+        return;
+    }
+
+    struct HmclAccount {
+        QString name;
+        QString uuid;
+    };
+
+    QList<HmclAccount> candidates;
+    for (const auto& value : entries) {
+        if (!value.isObject()) {
+            continue;
+        }
+        const auto entry = value.toObject();
+        if (entry.value("type").toString() == "msa") {
+            continue;
+        }
+        QString name = entry.value("displayName").toString();
+        if (name.isEmpty()) {
+            name = entry.value("profileName").toString();
+        }
+        if (name.isEmpty()) {
+            name = entry.value("username").toString();
+        }
+        if (name.isEmpty()) {
+            continue;
+        }
+        QString uuid = entry.value("uuid").toString();
+        if (uuid.isEmpty()) {
+            uuid = entry.value("profileID").toString();
+        }
+        uuid = MinecraftAccount::normalizeUuid(uuid);
+
+        bool duplicate = false;
+        for (const auto& candidate : candidates) {
+            if (uuid.isEmpty() ? candidate.uuid.isEmpty() && candidate.name == name : candidate.uuid == uuid) {
+                duplicate = true;
+                break;
+            }
+        }
+        if (!duplicate) {
+            candidates.append({ name, uuid });
+        }
+    }
+
+    int imported = 0;
+    int updated = 0;
+    int skipped = 0;
+    for (const auto& candidate : candidates) {
+        if (!candidate.uuid.isEmpty() && m_accounts->findAccountByProfileId(candidate.uuid) != -1) {
+            skipped++;
+            continue;
+        }
+
+        MinecraftAccountPtr sameNameAccount;
+        for (int i = 0; i < m_accounts->count(); i++) {
+            const auto account = m_accounts->at(i);
+            if (account->accountType() == AccountType::Offline && account->profileName() == candidate.name) {
+                sameNameAccount = account;
+                break;
+            }
+        }
+        if (sameNameAccount) {
+            sameNameAccount->setOfflineProfile(candidate.name, candidate.uuid);
+            updated++;
+            continue;
+        }
+
+        const auto account = MinecraftAccount::createOffline(candidate.name, candidate.uuid);
+        account->login()->start();  // The task will complete here.
+        m_accounts->addAccount(account);
+        if (m_accounts->count() == 1) {
+            m_accounts->setDefaultAccount(account);
+        }
+        imported++;
+    }
+
+    QMessageBox::information(this, tr("Import finished"),
+                             tr("Imported %1 account(s), updated %2 account(s), skipped %3 account(s).")
+                                 .arg(imported)
+                                 .arg(updated)
+                                 .arg(skipped));
 }
 
 void AccountListPage::on_actionRemove_triggered()
@@ -225,6 +386,7 @@ void AccountListPage::updateButtonStates()
     ui->actionSetDefault->setEnabled(accountIsReady);
     ui->actionManageSkins->setEnabled(accountIsReady && accountIsOnline);
     ui->actionRefresh->setEnabled(accountIsReady && accountIsOnline);
+    ui->actionEditOffline->setEnabled(accountIsReady && !accountIsOnline);
 
     if (m_accounts->defaultAccount().get() == nullptr) {
         ui->actionNoDefault->setEnabled(false);

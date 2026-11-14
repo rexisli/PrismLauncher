@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>400</width>
-    <height>158</height>
+    <height>196</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -31,6 +31,16 @@
     <widget class="QLineEdit" name="usernameTextBox">
      <property name="placeholderText">
       <string>Username</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLineEdit" name="uuidTextBox">
+     <property name="clearButtonEnabled">
+      <bool>true</bool>
+     </property>
+     <property name="placeholderText">
+      <string>UUID (optional, leave empty to derive it from the username)</string>
      </property>
     </widget>
    </item>

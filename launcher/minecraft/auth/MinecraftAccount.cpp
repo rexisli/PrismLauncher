@@ -74,7 +74,18 @@ MinecraftAccountPtr MinecraftAccount::createBlankMSA()
     return account;
 }
 
-MinecraftAccountPtr MinecraftAccount::createOffline(const QString& username)
+QString MinecraftAccount::normalizeUuid(const QString& uuid)
+{
+    static const QRegularExpression hexRegExp("^[0-9a-fA-F]{32}$");
+    auto stripped = uuid.trimmed();
+    stripped.remove('-');
+    if (!hexRegExp.match(stripped).hasMatch()) {
+        return {};
+    }
+    return stripped.toLower();
+}
+
+MinecraftAccountPtr MinecraftAccount::createOffline(const QString& username, const QString& uuid)
 {
     auto account = makeShared<MinecraftAccount>();
     account->data.type = AccountType::Offline;
@@ -83,10 +94,24 @@ MinecraftAccountPtr MinecraftAccount::createOffline(const QString& username)
     account->data.yggdrasilToken.issueInstant = QDateTime::currentDateTimeUtc();
     account->data.yggdrasilToken.extra["userName"] = username;
     account->data.yggdrasilToken.extra["clientToken"] = QUuid::createUuid().toString(QUuid::Id128);
-    account->data.minecraftProfile.id = uuidFromUsername(username).toString(QUuid::Id128);
+    const auto normalizedUuid = normalizeUuid(uuid);
+    account->data.minecraftProfile.id = normalizedUuid.isEmpty() ? uuidFromUsername(username).toString(QUuid::Id128) : normalizedUuid;
     account->data.minecraftProfile.name = username;
     account->data.minecraftProfile.validity = Validity::Certain;
     return account;
+}
+
+void MinecraftAccount::setOfflineProfile(const QString& username, const QString& uuid)
+{
+    if (data.type != AccountType::Offline) {
+        qWarning() << "MinecraftAccount: refusing to change the profile of a non-offline account.";
+        return;
+    }
+    const auto normalizedUuid = normalizeUuid(uuid);
+    data.yggdrasilToken.extra["userName"] = username;
+    data.minecraftProfile.name = username;
+    data.minecraftProfile.id = normalizedUuid.isEmpty() ? uuidFromUsername(username).toString(QUuid::Id128) : normalizedUuid;
+    emit changed();
 }
 
 QJsonObject MinecraftAccount::saveToJson() const

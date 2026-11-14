@@ -21,6 +21,7 @@
 #include <QPushButton>
 #include <QRegularExpression>
 
+#include "minecraft/auth/MinecraftAccount.h"
 #include "ui_ChooseOfflineNameDialog.h"
 
 ChooseOfflineNameDialog::ChooseOfflineNameDialog(const QString& message, QWidget* parent)
@@ -57,15 +58,42 @@ void ChooseOfflineNameDialog::setUsername(const QString& username) const
     updateAcceptAllowed(username);
 }
 
+QString ChooseOfflineNameDialog::getUuid() const
+{
+    return ui->uuidTextBox->text().trimmed();
+}
+
+void ChooseOfflineNameDialog::setUuid(const QString& uuid) const
+{
+    ui->uuidTextBox->setText(uuid);
+    updateAcceptAllowed(getUsername());
+}
+
+void ChooseOfflineNameDialog::setUuidVisible(bool visible) const
+{
+    ui->uuidTextBox->setVisible(visible);
+    updateAcceptAllowed(getUsername());
+}
+
 void ChooseOfflineNameDialog::updateAcceptAllowed(const QString& username) const
 {
-    const bool allowed = ui->allowInvalidUsernames->isChecked() ? !username.isEmpty() : ui->usernameTextBox->hasAcceptableInput();
-    ui->buttonBox->button(QDialogButtonBox::Ok)->setEnabled(allowed);
+    const QString uuid = getUuid();
+    const bool uuidAllowed = uuid.isEmpty() || !MinecraftAccount::normalizeUuid(uuid).isEmpty();
+    const bool usernameAllowed =
+        ui->allowInvalidUsernames->isChecked() ? !username.isEmpty() : ui->usernameTextBox->hasAcceptableInput();
+    ui->buttonBox->button(QDialogButtonBox::Ok)->setEnabled(usernameAllowed && uuidAllowed);
+    ui->uuidTextBox->setToolTip(uuidAllowed ? tr("Optional. Leave empty to derive the UUID from the username.")
+                                            : tr("A UUID must be 32 hexadecimal characters, optionally separated by dashes."));
 }
 
 void ChooseOfflineNameDialog::on_usernameTextBox_textEdited(const QString& newText) const
 {
     updateAcceptAllowed(newText);
+}
+
+void ChooseOfflineNameDialog::on_uuidTextBox_textEdited(const QString&) const
+{
+    updateAcceptAllowed(getUsername());
 }
 
 void ChooseOfflineNameDialog::on_allowInvalidUsernames_checkStateChanged(const Qt::CheckState checkState) const
